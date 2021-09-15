@@ -1,10 +1,15 @@
 const redis = require("../DB/redis");
 const uuid = require("uuid")
+/**
+ * redis分布式锁 利用setnx
+ * 
+ */
 module.exports = {
   async buy(ctx) {
+    const lockKey = "product_1";
+    const lockValue = uuid.v4();
     try {
-      const lockKey = "product_1"
-      const data = await redis.set(lockKey, lockKey, "EX", 20, "NX");
+      const data = await redis.set(lockKey, lockValue, "EX", 3, "NX");
       if (!data) {
         return ctx.body = {
           message: "手气不好下次再来"
@@ -16,6 +21,9 @@ module.exports = {
         const at = Math.round(time / 1000);
         await redis.zadd("user_goods_list", at, uuid.v4())
         await redis.decr("goods_count");
+        if (lockValue == await redis.get(lockKey)) { // 防止高并发的时候 误删别的进程的key
+          await redis.del(lockKey);
+        }
         ctx.body = {
           message: "抢到了"
         }
@@ -24,36 +32,12 @@ module.exports = {
           message: "goods is empty"
         }
       }
-    } catch (error) {
-      console.log(error)
-      ctx.body = {
-        message: "fail"
+    } finally {
+      // 无论何时都执行，防止死锁
+      if (lockValue == await redis.get(lockKey)) {
+        await redis.del(lockKey);
       }
     }
-    // try {
-    //   const lockKey = "product_1"
-    //   await redis.setex(lockKey,10,lockKey);
-    //   await redis.get
-    //   if (parseInt(count) > 0) {
-    //     console.log(count);
-    //     const time = new Date();
-    //     const at = Math.round(time / 1000);
-    //     await redis.setex
-    //     const data = await redis.multi().zadd("user_goods_list", at, uuid.v4()).set("goods_count", count - 1).exec();
-    //     ctx.body = {
-    //       message: "抢到了"
-    //     }
-    //   } else {
-    //     ctx.body = {
-    //       message: "goods is empty"
-    //     }
-    //   }
-    // } catch (error) {
-    //   console.log(error)
-    //   ctx.body = {
-    //     message: "fail"
-    //   }
-    // }
   }
 }
 
